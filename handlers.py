@@ -1,4 +1,5 @@
 import pandas as pd
+from db import get_drct_id, get_all_msisdn
 
 # Загрузим данные из CSV файла в pandas DataFrame
 file_path = 'DEF-9xx.csv'
@@ -59,12 +60,37 @@ def compress_str(prefix, low, high):
             break
     return numbers
 
+def write_to_csv(data, file_path):
+    """
+    Записывает данные в CSV файл с помощью pandas.
+
+    Параметры:
+    data (set): Множество кортежей, где каждый кортеж содержит (prefix, region_id).
+    file_path (str): Путь к файлу, в который нужно записать данные.
+    """
+    # Преобразование данных в DataFrame
+    df = pd.DataFrame(list(data), columns=['prefix', 'region_id'])
+    # Запись DataFrame в CSV файл
+    df.to_csv(file_path, index=False)
 
 
-phone_number = '9505998693'
-result = bin_search(df, phone_number)
-prefix = str(result['АВС/ DEF'])
-low = result['От']
-high = result['До']
-numbers = compress_str(prefix, low, high)
-print(compress_numbers(numbers))
+
+phone_numbers = get_all_msisdn()
+arr = set()
+if phone_numbers:
+    for phone_number in phone_numbers:
+        result_str = bin_search(df, phone_number[0])
+        prefix = str(result_str['АВС/ DEF'])
+        low = result_str['От']
+        high = result_str['До']
+        region = result_str['Регион']
+        region_id = get_drct_id(region)[0][0]
+        numbers = compress_str(prefix, low, high)
+        new_prefix = compress_numbers(numbers)
+        for i in range(len(new_prefix)):
+            arr.add((new_prefix[i], region_id))
+else:
+    print('Номера не найдены')
+
+file_path = 'output.csv'
+write_to_csv(arr, file_path)

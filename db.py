@@ -212,3 +212,78 @@ def insert_csv_data(file_path):
             cursor.close()
         if connection is not None:
             connection.close()
+
+def get_drct_id(name_csv):
+    """
+    Выполняет SQL-запрос для получения DRCT_DRCT_ID по указанному NAME_CSV.
+
+    Параметры:
+    name_csv (str): Значение NAME_CSV для поиска.
+
+    Возвращает:
+    list: Список результатов запроса.
+    """
+    connection = None
+    cursor = None
+    result = []
+
+    try:
+        connection = ora.connect(user=username, password=password, dsn=dsn)
+        cursor = connection.cursor()
+
+        query = "SELECT DRCT_DRCT_ID FROM BIS.TEASR_PREFIX_DIRECTIONS WHERE NAME_CSV = :name_csv"
+        cursor.execute(query, name_csv=name_csv)
+
+        result = cursor.fetchall()
+
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        print(f"Ошибка базы данных: {error.code}, {error.message}")
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        print(f"Ошибка: {e}")
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None:
+            connection.close()
+
+    return result
+
+def get_all_msisdn():
+    """
+    Получает все строки из таблицы TEASR_PREFIX_MSISDN.
+
+    Возвращает:
+    list: Список кортежей с результатами запроса.
+    """
+    connection = None
+    cursor = None
+    try:
+        connection = ora.connect(user=username, password=password, dsn=dsn)
+        cursor = connection.cursor()
+
+        query = """
+            SELECT MSISDN_C
+            FROM BIS.TEASR_PREFIX_MSISDN
+        """
+        cursor.execute(query)
+        result = cursor.fetchall()
+
+        return result
+
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        print(f"Ошибка базы данных: {error.code}, {error.message}")
+        return None
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        print(f"Ошибка: {e}")
+        return None
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None:
+            connection.close()
