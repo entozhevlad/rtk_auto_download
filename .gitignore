@@ -185,4 +185,7 @@ fabric.properties
 # idea folder, uncomment if you don't need it
 # .idea
 DEF-9xx.csv
+output.csv
+test.py
+SQL
 
