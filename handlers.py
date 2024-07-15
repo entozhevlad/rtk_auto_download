@@ -1,5 +1,5 @@
 import pandas as pd
-from db import get_drct_id, get_all_msisdn
+from db import get_drct_id, get_all_msisdn, process_and_insert_data, create_final_table
 
 # Загрузим данные из CSV файла в pandas DataFrame
 file_path = 'DEF-9xx.csv'
@@ -94,3 +94,5 @@ else:
 
 file_path = 'output.csv'
 write_to_csv(arr, file_path)
+create_final_table()
+process_and_insert_data()

@@ -187,3 +187,4 @@ fabric.properties
 DEF-9xx.csv
 test.py
 /output.csv
+/SQL/

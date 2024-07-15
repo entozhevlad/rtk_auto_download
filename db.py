@@ -5,6 +5,7 @@ from decouple import config
 import sys
 import os
 import re
+import pandas as pd
 
 # Учетные данные для подключения к базе данных
 try:
@@ -317,6 +318,143 @@ def get_all_msisdn():
     except Exception as e:
         logging.error(f"Ошибка: {e}")
         return None
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None:
+            connection.close()
+
+
+def process_and_insert_data():
+    """
+    Выполняет логику обработки данных и вставки их в таблицы базы данных.
+    """
+    # Установим конфигурацию Oracle клиента
+    set_cfg_ora_clnt()
+
+    # Путь к CSV файлу
+    file_path = 'output.csv'
+
+    # Загрузка данных из CSV файла
+    data = pd.read_csv(file_path)
+
+    # Подключение к базе данных
+    connection = None
+    cursor = None
+    try:
+        connection = ora.connect(user=username, password=password, dsn=dsn)
+        cursor = connection.cursor()
+
+        # Определение максимальных значений PSET_ID
+        cursor.execute("SELECT max(ps.PSET_ID) FROM prefix_sets ps")
+        max_pset_id = cursor.fetchone()[0] or 0
+
+        cursor.execute("SELECT max(p.PSET_ID) FROM teasr_prefix_sets_exp_csv p")
+        max_teasr_pset_id = cursor.fetchone()[0] or 0
+
+        c = max(max_pset_id, max_teasr_pset_id)
+
+        # Вставка данных из CSV файла в соответствующие таблицы
+        for index, row in data.iterrows():
+            p, b = row['prefix'], row['region_id']
+            c += 1
+
+            if str(p).startswith('D'):
+                cursor.execute("""
+                    INSERT INTO teasr_prefix_sets_exp_csv (PSET_ID, PREFIX, REGION_ID)
+                    VALUES (:1, :2, :3)
+                """, (c, p, b))
+
+                cursor.execute("""
+                    INSERT INTO bis.teasr_mnp_rating_histories_exp_csv (PREFIX, REGION_ID)
+                    VALUES (:1, :2)
+                """, (p, b))
+            else:
+                cursor.execute("""
+                    INSERT INTO teasr_prefix_sets_exp_csv (PSET_ID, PREFIX, REGION_ID)
+                    VALUES (:1, :2, :3)
+                """, (c, p, b))
+
+            cursor.execute("""
+                INSERT INTO teasr_ins_matrix_dir_hist_exp_csv (COLUMN1, COLUMN2, ...)
+                SELECT md.COLUMN1, md.COLUMN2, ...
+                FROM teasr_ins_matrix_dir_hist_csv md
+                WHERE md.drct_drct_id = :1
+            """, (b,))
+
+        # Коммит транзакции
+        connection.commit()
+        logging.info("Данные успешно обработаны и вставлены в таблицы базы данных.")
+
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        print(f"Ошибка базы данных: {error.code}, {error.message}")
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        print(f"Ошибка: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+def create_final_table():
+    """
+    Создает временную таблицу для хранения данных из CSV файла.
+
+    Действия:
+    1. Подключается к базе данных.
+    2. Удаляет таблицу TEASR_DEF, если она существует.
+    3. Создает новую таблицу TEASR_DEF с заданной структурой.
+    4. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
+    """
+    connection = None
+    cursor = None
+    try:
+        connection = ora.connect(user=username, password=password, dsn=dsn)
+        cursor = connection.cursor()
+
+        drop_table_sql = """
+            BEGIN
+                EXECUTE IMMEDIATE 'DROP TABLE "BIS"."TEASR_PREFIX_SETS_EXP_CSV"';
+            EXCEPTION
+                WHEN OTHERS THEN
+                    IF SQLCODE != -942 THEN
+                        RAISE;
+                    END IF;
+            END;
+            """
+        cursor.execute(drop_table_sql)
+        logging.info("Существующая таблица удалена, если она была")
+
+        create_table_sql = """
+            CREATE TABLE "BIS"."TEASR_PREFIX_SETS_EXP_CSV" (
+                     "PSET_ID" NUMBER(10,0) NOT NULL ENABLE, 
+                     "NUMBER_HISTORY" NUMBER(10,0) NOT NULL ENABLE, 
+                     "OPER_OPER_ID" NUMBER(10,0) NOT NULL ENABLE, 
+                     "PREFIX" VARCHAR2(63) NOT NULL ENABLE, 
+                     "START_DATE" DATE NOT NULL ENABLE, 
+                     "END_DATE" DATE NOT NULL ENABLE, 
+                     "NAVI_USER" VARCHAR2(70) NOT NULL ENABLE, 
+                     "NAVI_DATE" DATE NOT NULL ENABLE, 
+                     "DRCT_DRCT_ID" NUMBER(10,0), 
+                     "CIT_CIT_ID" NUMBER(10,0), 
+                     "COU_COU_ID" NUMBER(10,0), 
+                     "PSET_COMMENT" VARCHAR2(2000), 
+                     "ODRC_ODRC_ID" NUMBER(10,0), 
+                     "ZONE_ZONE_ID" NUMBER(10,0) NOT NULL ENABLE, 
+                     "AOB_AOB_ID" NUMBER(10,0), 
+                     "RTCM_RTCM_ID" NUMBER(9,0), 
+                     "ACTION" VARCHAR2(10)
+                     )
+
+            """
+        cursor.execute(create_table_sql)
+        logging.info("Таблица для данных CSV создана")
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        print(f"Ошибка: {e}")
     finally:
         if cursor is not None:
             cursor.close()
