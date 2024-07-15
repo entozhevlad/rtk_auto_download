@@ -17,6 +17,12 @@ except Exception as e:
 
 
 def set_cfg_ora_clnt():
+    """
+    Устанавливает конфигурацию Oracle-клиента в зависимости от операционной системы.
+
+    Возвращает:
+    str: Путь к каталогу конфигурации Oracle-клиента.
+    """
     try:
         if sys.platform.startswith("linux"):
             ora.defaults.config_dir = os.path.join(os.environ.get("HOME"), "instantclient_21_10")
@@ -35,8 +41,8 @@ def create_temp_table():
 
     Действия:
     1. Подключается к базе данных.
-    2. Удаляет таблицу temp_csv_data, если она существует.
-    3. Создает новую таблицу temp_csv_data с заданной структурой.
+    2. Удаляет таблицу TEASR_DEF, если она существует.
+    3. Создает новую таблицу TEASR_DEF с заданной структурой.
     4. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
     """
     connection = None
@@ -74,8 +80,24 @@ def create_temp_table():
 
     except ora.DatabaseError as e:
         error, = e.args
-        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
-        print(f"Ошибка базы данных: {error.code}, {error.message}")
+        if error.code == 942:  # Ошибка - таблица не существует
+            logging.info("Таблица TEASR_DEF не существует, создаем новую.")
+            create_table_sql = """
+                CREATE TABLE "BIS"."TEASR_DEF" (
+                     "DEF" VARCHAR2(20), 
+                     "ST" VARCHAR2(20), 
+                     "EN" VARCHAR2(20), 
+                     "CO" VARCHAR2(20), 
+                     "OP" VARCHAR2(200), 
+                     "DIR" VARCHAR2(500), 
+                     "INN" VARCHAR2(130)
+                     )
+                """
+            cursor.execute(create_table_sql)
+            logging.info("Таблица для данных CSV создана успешно.")
+        else:
+            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+            print(f"Ошибка базы данных: {error.code}, {error.message}")
     except Exception as e:
         logging.error(f"Ошибка: {e}")
         print(f"Ошибка: {e}")
@@ -130,7 +152,7 @@ def is_safe_csv_file(csv_path):
 
 def insert_csv_data(file_path):
     """
-    Загружает данные из CSV файла в таблицу temp_csv_data.
+    Загружает данные из CSV файла в таблицу TEASR_DEF.
 
     Параметры:
     file_path (str): Путь к файлу CSV, который нужно загрузить.
@@ -140,7 +162,7 @@ def insert_csv_data(file_path):
     2. Проверяет файл на наличие подозрительных паттернов.
     3. Подключается к базе данных.
     4. Читает данные из CSV файла.
-    5. Пакетно вставляет данные в таблицу temp_csv_data.
+    5. Пакетно вставляет данные в таблицу TEASR_DEF.
     6. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
     """
     if not os.path.isfile(file_path):
@@ -194,7 +216,12 @@ def insert_csv_data(file_path):
 
     except ora.DatabaseError as e:
         error, = e.args
-        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        if error.code == 942:  # Ошибка - таблица не существует
+            logging.error(f"Таблица TEASR_DEF не существует.")
+        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
+            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
+        else:
+            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
         print(f"Ошибка базы данных: {error.code}, {error.message}")
     except ora.InterfaceError as e:
         logging.error(f"Ошибка подключения к базе данных: {e}")
@@ -210,6 +237,7 @@ def insert_csv_data(file_path):
             cursor.close()
         if connection is not None:
             connection.close()
+
 
 def get_drct_id(name_csv):
     """
@@ -236,7 +264,12 @@ def get_drct_id(name_csv):
 
     except ora.DatabaseError as e:
         error, = e.args
-        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        if error.code == 942:  # Ошибка - таблица не существует
+            logging.error(f"Таблица TEASR_PREFIX_DIRECTIONS не существует.")
+        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
+            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
+        else:
+            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
         print(f"Ошибка базы данных: {error.code}, {error.message}")
     except Exception as e:
         logging.error(f"Ошибка: {e}")
@@ -248,6 +281,7 @@ def get_drct_id(name_csv):
             connection.close()
 
     return result
+
 
 def get_all_msisdn():
     """
@@ -273,12 +307,15 @@ def get_all_msisdn():
 
     except ora.DatabaseError as e:
         error, = e.args
-        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
-        print(f"Ошибка базы данных: {error.code}, {error.message}")
+        if error.code == 942:  # Ошибка - таблица не существует
+            logging.error(f"Таблица TEASR_PREFIX_MSISDN не существует.")
+        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
+            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
+        else:
+            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
         return None
     except Exception as e:
         logging.error(f"Ошибка: {e}")
-        print(f"Ошибка: {e}")
         return None
     finally:
         if cursor is not None:

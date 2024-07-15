@@ -6,7 +6,6 @@ from decouple import config
 import db
 import git_upload
 
-
 def setup_logging(log_folder):
     """
     Настройка логгера для записи в файл 'prfDDMMYYYY.log' в указанной папке.
@@ -22,7 +21,6 @@ def setup_logging(log_folder):
     log_file_name = datetime.now().strftime("%d%m%Y")
     log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
     logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
-
 
 def download_file(file_url):
     """
@@ -46,8 +44,18 @@ def download_file(file_url):
         return file_name
 
     except urllib.error.URLError as e:
-        logging.error(f"Ошибка URL: {e}")
-        print(f"Ошибка URL: {e}")
+        if hasattr(e, 'code') and e.code == 404:
+            logging.error(f"Ошибка: Файл не найден по указанному URL. [URLError] {e.reason}")
+            print("Ошибка: Файл не найден по указанному URL.")
+        elif isinstance(e.reason, ConnectionResetError):
+            logging.error(f"Ошибка: Нет подключения к интернету.[URLError] {e.reason}")
+            print("Ошибка: Нет подключения к интернету.")
+        elif 'EOF occurred in violation of protocol' in str(e.reason):
+            logging.error(f"Ошибка: Произошел разрыв соединения SSL. [URLError] {e.reason}")
+            print("Ошибка: Произошел разрыв соединения SSL.")
+        else:
+            logging.error(f"Ошибка: Ошибка сети. Проверьте интернет соединение [URLError] {e.reason}")
+            print(f"Ошибка: {e.reason}")
     except urllib.error.HTTPError as e:
         logging.error(f"HTTP ошибка: {e}")
         print(f"HTTP ошибка: {e}")
@@ -57,35 +65,37 @@ def download_file(file_url):
 
     return None
 
-
 def configure_proxy():
     """
     Настройка прокси для urllib на основе конфигурации в .env файле, с учетом логина и пароля.
     """
-    use_proxy = config("USE_PROXY", cast=bool)
+    use_proxy = config("USE_PROXY", default=False, cast=bool)
     if use_proxy:
         proxy_url = config("PROXY_URL", default="")
         proxy_username = config("PROXY_USERNAME", default="")
         proxy_password = config("PROXY_PASSWORD", default="")
 
         if proxy_url:
-            if proxy_username and proxy_password:
-                proxy_handler = urllib.request.ProxyHandler({
-                    "http": f"http://{proxy_username}:{proxy_password}@{proxy_url}",
-                    "https": f"https://{proxy_username}:{proxy_password}@{proxy_url}",
-                })
-            else:
-                proxy_handler = urllib.request.ProxyHandler({
-                    "http": proxy_url,
-                    "https": proxy_url,
-                })
-            opener = urllib.request.build_opener(proxy_handler)
-            urllib.request.install_opener(opener)
-            logging.info("Прокси настроен")
+            try:
+                if proxy_username and proxy_password:
+                    proxy_handler = urllib.request.ProxyHandler({
+                        "http": f"http://{proxy_username}:{proxy_password}@{proxy_url}",
+                        "https": f"https://{proxy_username}:{proxy_password}@{proxy_url}",
+                    })
+                else:
+                    proxy_handler = urllib.request.ProxyHandler({
+                        "http": proxy_url,
+                        "https": proxy_url,
+                    })
+                opener = urllib.request.build_opener(proxy_handler)
+                urllib.request.install_opener(opener)
+                logging.info("Прокси настроен")
+            except Exception as e:
+                logging.error("Ошибка: Некорректные данные прокси.")
+                print("Ошибка: Некорректные данные прокси.")
         else:
-            logging.error("URL прокси не указан в конфигурации")
-            print("URL прокси не указан в конфигурации")
-
+            logging.error("Ошибка: URL прокси не указан в конфигурации.")
+            print("Ошибка: URL прокси не указан в конфигурации.")
 
 def main():
     """
@@ -134,7 +144,6 @@ def main():
             print(f"Ошибка при загрузке файла в Git: {e}")
 
     print("Загрузка завершена.")
-
 
 if __name__ == "__main__":
     main()
