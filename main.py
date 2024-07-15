@@ -2,9 +2,10 @@ import os
 import urllib.request
 import logging
 from datetime import datetime
-import db
 from decouple import config
+import db
 import git_upload
+
 
 def setup_logging(log_folder):
     """
@@ -22,31 +23,18 @@ def setup_logging(log_folder):
     log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
     logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
 
-def download_file(url, file_url_prefix):
+
+def download_file(file_url):
     """
-    Скачивание файла по указанной ссылке, начинающейся с заданного префикса.
+    Скачивание файла по указанной прямой ссылке.
 
     Параметры:
-    url (str): URL страницы, с которой будет скачан файл.
-    file_url_prefix (str): Префикс URL файла для поиска на странице.
+    file_url (str): Прямая ссылка на файл.
 
     Возвращает:
     str: Имя скачанного файла, если загрузка успешна, иначе None.
     """
     try:
-        response = urllib.request.urlopen(url)
-        html_content = response.read().decode('utf-8')
-
-        start_index = html_content.find(file_url_prefix)
-        if start_index == -1:
-            logging.error("Ссылка не найдена")
-            print("Ссылка не найдена")
-            return None  # Добавлено возвращение None в случае, если ссылка не найдена
-
-        end_index = html_content.find('"', start_index)
-        partial_file_url = html_content[start_index:end_index]
-        file_url = urllib.parse.urljoin(url, partial_file_url)
-
         file_name = os.path.basename(urllib.parse.urlparse(file_url).path)
 
         with urllib.request.urlopen(file_url) as file_response:
@@ -70,6 +58,35 @@ def download_file(url, file_url_prefix):
     return None
 
 
+def configure_proxy():
+    """
+    Настройка прокси для urllib на основе конфигурации в .env файле, с учетом логина и пароля.
+    """
+    use_proxy = config("USE_PROXY", cast=bool)
+    if use_proxy:
+        proxy_url = config("PROXY_URL", default="")
+        proxy_username = config("PROXY_USERNAME", default="")
+        proxy_password = config("PROXY_PASSWORD", default="")
+
+        if proxy_url:
+            if proxy_username and proxy_password:
+                proxy_handler = urllib.request.ProxyHandler({
+                    "http": f"http://{proxy_username}:{proxy_password}@{proxy_url}",
+                    "https": f"https://{proxy_username}:{proxy_password}@{proxy_url}",
+                })
+            else:
+                proxy_handler = urllib.request.ProxyHandler({
+                    "http": proxy_url,
+                    "https": proxy_url,
+                })
+            opener = urllib.request.build_opener(proxy_handler)
+            urllib.request.install_opener(opener)
+            logging.info("Прокси настроен")
+        else:
+            logging.error("URL прокси не указан в конфигурации")
+            print("URL прокси не указан в конфигурации")
+
+
 def main():
     """
     Основная функция для выполнения сценария скачивания файла и записи логов.
@@ -77,22 +94,24 @@ def main():
     Действия:
     1. Читает настройки из конфигурационного файла.
     2. Настраивает логирование.
-    3. Скачивает файл по указанному URL и префиксу.
-    4. Если файл скачан, создает временную таблицу в базе данных.
-    5. Загружает данные из CSV файла в базу данных.
-    6. Выводит сообщение о завершении загрузки.
+    3. Настраивает прокси, если включен.
+    4. Скачивает файл по указанной прямой ссылке.
+    5. Если файл скачан, создает временную таблицу в базе данных.
+    6. Загружает данные из CSV файла в базу данных.
+    7. Выводит сообщение о завершении загрузки.
     """
     try:
-        url = config("URL")
-        file_url_prefix = config("FILE_URL_PREFIX")
+        file_url = config("FILE_URL")
         log_folder = config("LOG_FOLDER")
     except KeyError as e:
         logging.error(f"Ошибка конфигурации: отсутствует параметр {e}")
         print(f"Ошибка конфигурации: отсутствует параметр {e}")
         return
+
     db.set_cfg_ora_clnt()
     setup_logging(log_folder)
-    file_name = download_file(url, file_url_prefix)
+    configure_proxy()
+    file_name = download_file(file_url)
 
     if file_name:
         if db.is_safe_csv_file(file_name):
@@ -105,6 +124,7 @@ def main():
         else:
             logging.error("CSV файл не прошел проверку на безопасность.")
             print("CSV файл не прошел проверку на безопасность.")
+
     user_input = input("Вы хотите запушить файл в Git? (y/n): ").strip().lower()
     if user_input in ('y', 'Y'):
         try:
@@ -114,6 +134,7 @@ def main():
             print(f"Ошибка при загрузке файла в Git: {e}")
 
     print("Загрузка завершена.")
+
 
 if __name__ == "__main__":
     main()
