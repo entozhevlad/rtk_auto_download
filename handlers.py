@@ -58,6 +58,7 @@ def compress_str(prefix, low, high):
         else:
             numbers = list(range(int(prefix+low), int(prefix+high)+1))
             break
+
     return numbers
 
 def write_to_csv(data, file_path):
@@ -70,12 +71,13 @@ def write_to_csv(data, file_path):
     """
     # Преобразование данных в DataFrame
     df = pd.DataFrame(list(data), columns=['prefix', 'region_id'])
+    df = df.sort_values(by='prefix')
     # Запись DataFrame в CSV файл
     df.to_csv(file_path, index=False)
 
 
 
-phone_numbers = get_all_msisdn()
+phone_numbers = [('997647930',)]
 arr = set()
 if phone_numbers:
     for phone_number in phone_numbers:
@@ -86,7 +88,11 @@ if phone_numbers:
         region = result_str['Регион']
         region_id = get_drct_id(region)[0][0]
         numbers = compress_str(prefix, low, high)
-        new_prefix = compress_numbers(numbers)
+        for _ in range(10):
+            numbers = compress_numbers(numbers)
+        new_prefix = numbers
+        for pref in new_prefix:
+            print(pref)
         for i in range(len(new_prefix)):
             arr.add((new_prefix[i], region_id))
 else:
@@ -95,4 +101,4 @@ else:
 file_path = 'output.csv'
 write_to_csv(arr, file_path)
 create_final_table()
-process_and_insert_data()
+
