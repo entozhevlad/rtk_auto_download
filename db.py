@@ -460,3 +460,42 @@ def create_final_table():
             cursor.close()
         if connection is not None:
             connection.close()
+
+def execute_max_pset_id_query():
+    """
+    Выполняет запрос для получения максимального PSET_ID из двух таблиц и
+    обновляет переменную c, если необходимо.
+    """
+    connection = None
+    cursor = None
+    try:
+        connection = ora.connect(user=username, password=password, dsn=dsn)
+        cursor = connection.cursor()
+
+        # Выполнение первого запроса
+        cursor.execute("SELECT MAX(ps.PSET_ID) FROM prefix_sets ps")
+        max_pset_id = cursor.fetchone()[0] or 0
+
+        # Выполнение второго запроса
+        cursor.execute("SELECT MAX(p.PSET_ID) FROM teasr_prefix_sets_exp_csv p")
+        max_teasr_pset_id = cursor.fetchone()[0] or 0
+
+        # Логика обновления переменной c
+        c = max(max_pset_id, max_teasr_pset_id)
+
+        logging.info(f"Максимальное значение PSET_ID: {c}")
+
+        return c
+
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        print(f"Ошибка базы данных: {error.code}, {error.message}")
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        print(f"Ошибка: {e}")
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if connection is not None:
+            connection.close()
