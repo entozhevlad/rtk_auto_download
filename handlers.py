@@ -152,11 +152,13 @@ def form_prefix(prefix, low, high, capacity):
 def handle_data():
     file_path = 'DEF-9xx.csv'
     df = pd.read_csv(file_path, delimiter=';', dtype={'От': str, 'До': str})
-    phone_numbers = get_all_msisdn()
+    phone_numbers = get_all_msisdn() # [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
+    print(phone_numbers)
     arr = set()
     if phone_numbers:
         nuser = 'nuser'#input('Введите имя пользователя для NAVI_USER: ')
         pset_id = execute_max_pset_id_query()
+        prefix_set = set()
         for phone_number in phone_numbers:
             result_str = bin_search(df, phone_number[0])
             prefix = str(result_str['АВС/ DEF'])
@@ -166,14 +168,19 @@ def handle_data():
             capacity = result_str['Емкость']
             region_id = get_drct_id(region)[0][0]
             new_prefix = form_prefix(prefix, low, high, capacity)
-
             for i in range(len(new_prefix)):
-                tup = form_tuple(pset_id, new_prefix[i], region_id, nuser)
-                pset_id += 1
-                arr.add(tup)
+                if new_prefix[i] not in prefix_set:
+                    tup = form_tuple(pset_id, new_prefix[i], region_id, nuser)
+                    pset_id += 1
+                    arr.add(tup)
+
+            print(arr)
     else:
         print('Номера не найдены')
 
     file_path = 'output.csv'
     write_to_csv(arr, file_path)
     insert_csv_updated_data(file_path)
+
+if __name__ == '__main__':
+    handle_data()

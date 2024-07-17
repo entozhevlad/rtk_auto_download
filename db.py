@@ -241,6 +241,7 @@ def get_all_msisdn():
         query = """
             SELECT MSISDN_C
             FROM BIS.TEASR_PREFIX_MSISDN
+            WHERE LENGTH(MSISDN_C) = 10 AND MSISDN_C NOT LIKE '%[^0-9]%'
         """
         execute_sql(cursor, query)
         result = cursor.fetchall()

@@ -5,7 +5,7 @@ from datetime import datetime
 from decouple import config
 import db
 import git_upload
-
+from handlers import handle_data
 def setup_logging(log_folder):
     """
     Настройка логгера для записи в файл 'prfDDMMYYYY.log' в указанной папке.
@@ -128,6 +128,7 @@ def main():
             try:
                 db.create_temp_table()
                 db.insert_csv_standart_data(file_name)
+                handle_data()
             except Exception as e:
                 logging.error(f"Ошибка при работе с базой данных: {e}")
                 print(f"Ошибка при работе с базой данных: {e}")
