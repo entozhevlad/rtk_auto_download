@@ -1,7 +1,6 @@
 import pandas as pd
-from db import get_drct_id, get_all_msisdn, process_and_insert_data, create_final_table
-
-
+from db import get_drct_id, get_all_msisdn, execute_max_pset_id_query, insert_csv_updated_data
+from datetime import datetime
 
 def bin_search(df, phone_number):
     prefix = phone_number[:3]
@@ -65,38 +64,116 @@ def write_to_csv(data, file_path):
     data (set): Множество кортежей, где каждый кортеж содержит (prefix, region_id).
     file_path (str): Путь к файлу, в который нужно записать данные.
     """
+    import pandas as pd
+
     # Преобразование данных в DataFrame
-    df = pd.DataFrame(list(data), columns=['prefix', 'region_id'])
-    df = df.sort_values(by='prefix')
+    df = pd.DataFrame(list(data), columns=['PSET_ID', 'NUMBER_HISTORY', 'OPER_OPER_ID', 'PREFIX', 'START_DATE',
+                                           'END_DATE', 'NAVI_USER', 'NAVI_DATE', 'DRCT_DRCT_ID', 'CIT_CIT_ID',
+                                           'COU_COU_ID', 'PSET_COMMENT', 'ODRC_ODRC_ID', 'ZONE_ZONE_ID', 'AOB_AOB_ID',
+                                           'RTCM_RTCM_ID', 'ACTION'])
+
+    # Сортировка DataFrame по столбцу 'PREFIX'
+    df = df.sort_values(by='PREFIX')
+
     # Запись DataFrame в CSV файл
     df.to_csv(file_path, index=False)
+def form_tuple(pset_id, prefix, region_id, nuser):
+    """
+        Формирует кортеж с данными для записи в CSV.
+
+        Параметры:
+        prefix (str): Префикс.
+        region_id (int): Идентификатор региона.
+        nuser (str): Имя пользователя.
+
+        Возвращает:
+        tuple: Кортеж с данными.
+    """
+    pset_id = pset_id
+    number_history = 1
+    oper_oper_id = 0
+    prefix = prefix
+    start_date = '01-01-2000'
+    end_date = '31-12-2999'
+    navi_user = nuser
+    navi_date = datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+    drct_drct_id = region_id
+    cit_cit_id = 0
+    cou_cou_id = 0
+    pset_comment = 'ВЗН'
+    odrc_odrc_id = None
+    zone_zone_id = 0
+    aob_aob_id = None
+    rtcm_rtcm_id= None
+    action = 'MERGE'
+    tup = (pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user, navi_date, drct_drct_id,
+           cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id, rtcm_rtcm_id, action)
+    return tup
+
+def check_prefix(numbers, capacity, end):
+    arr = numbers.copy()
+    count = 0
+    m = len(arr)
+    for i in range(m):
+        if i != len(arr) - 1:
+            cur_l = str(arr[i])
+            if len(cur_l) < 10:
+                cur_l += '0' * (10 - len(cur_l))
+            cur_r = str(arr[i+1])
+            if len(cur_r) < 10:
+                cur_r += '0' * (10 - len(cur_r))
+            tmp = int(cur_r) - int(cur_l)
+            count += tmp
+        else:
+            cur_l = str(arr[i])
+            if len(cur_l) < 10:
+                cur_l += '0' * (10 - len(cur_l))
+            cur_r = str(arr[i])[:3] + end
+            if len(cur_r) < 10:
+                cur_r = '0' * (10 - len(cur_r)) + cur_r
+            tmp = int(cur_r) - int(cur_l)
+            count += tmp
+    count += 1
+    return True if count == capacity else False
 
 
-def main():
+
+def form_prefix(prefix, low, high, capacity):
+    numbers = compress_str(prefix, low, high)
+    for _ in range(10):
+        numbers = compress_numbers(numbers)
+    if check_prefix(numbers, capacity, high):
+        print('Все префиксы корректны')
+    else:
+        print('Ошибка при проверки префиксов. Проверьте корректность построения')
+
+    return numbers
+
+def handle_data():
     file_path = 'DEF-9xx.csv'
     df = pd.read_csv(file_path, delimiter=';', dtype={'От': str, 'До': str})
-    phone_number = '9015000001'
+    phone_numbers = get_all_msisdn()
     arr = set()
-    if phone_number:
-        result_str = bin_search(df, phone_number)
-        prefix = str(result_str['АВС/ DEF'])
-        low = result_str['От']
-        high = result_str['До']
-        region = result_str['Регион']
-        region_id = get_drct_id(region)[0][0]
-        numbers = compress_str(prefix, low, high)
-        for _ in range(10):
-            numbers = compress_numbers(numbers)
-        new_prefix = numbers
-        for i in range(len(new_prefix)):
-            arr.add((new_prefix[i], region_id))
+    if phone_numbers:
+        nuser = 'nuser'#input('Введите имя пользователя для NAVI_USER: ')
+        pset_id = execute_max_pset_id_query()
+        for phone_number in phone_numbers:
+            result_str = bin_search(df, phone_number[0])
+            prefix = str(result_str['АВС/ DEF'])
+            low = result_str['От']
+            high = result_str['До']
+            region = result_str['Регион']
+            capacity = result_str['Емкость']
+            region_id = get_drct_id(region)[0][0]
+            new_prefix = form_prefix(prefix, low, high, capacity)
+
+            for i in range(len(new_prefix)):
+                tup = form_tuple(pset_id, new_prefix[i], region_id, nuser)
+                pset_id += 1
+                arr.add(tup)
     else:
         print('Номера не найдены')
 
     file_path = 'output.csv'
     write_to_csv(arr, file_path)
-    create_final_table()
-
-if __name__ == '__main__':
-    main()
-
+    insert_csv_updated_data(file_path)

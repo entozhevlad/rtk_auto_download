@@ -127,7 +127,7 @@ def main():
         if db.is_safe_csv_file(file_name):
             try:
                 db.create_temp_table()
-                db.insert_csv_data(file_name)
+                db.insert_csv_standart_data(file_name)
             except Exception as e:
                 logging.error(f"Ошибка при работе с базой данных: {e}")
                 print(f"Ошибка при работе с базой данных: {e}")
