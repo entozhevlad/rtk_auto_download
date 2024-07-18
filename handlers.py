@@ -3,6 +3,7 @@ import logging
 from db import get_drct_id, get_all_msisdn, execute_max_pset_id_query, insert_csv_updated_data
 from datetime import datetime
 import os
+from decouple import config
 
 # Настройка логгера
 def setup_logging(log_folder):
@@ -185,7 +186,7 @@ def handle_data():
 
     file_path = 'DEF-9xx.csv'
     df = pd.read_csv(file_path, delimiter=';', dtype={'От': str, 'До': str})
-    phone_numbers = [('9498506111',), ('9499044522',) ] #  # Вызов номеров в формате  [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
+    phone_numbers = get_all_msisdn() #Вызов номеров в формате  [('9000000000',), ('9999999999',)]
     arr = set()
     if phone_numbers:
         nuser = input('Введите имя пользователя для NAVI_USER: ')
@@ -215,7 +216,8 @@ def handle_data():
     else:
         logging.warning('Номера не найдены')
 
-    file_path = 'output.csv'
+    file_path = config('FILE_FOR_PUSH_NAME')
+    print(file_path)
     write_to_csv(arr, file_path)
     insert_csv_updated_data(file_path)
 

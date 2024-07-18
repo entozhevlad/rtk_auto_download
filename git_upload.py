@@ -7,7 +7,7 @@ import time
 import gc
 
 # Путь к локальному CSV файлу, который нужно отправить
-csv_file_path = 'output.csv'
+csv_file_path = config('FILE_FOR_PUSH_NAME')
 
 # Путь к целевому локальному репозиторию
 target_repo_path = 'tmp/test'
@@ -15,7 +15,7 @@ target_repo_path = 'tmp/test'
 # URL удалённого репозитория
 remote_repo_url = config('GIT_URL')
 remote_branch = config('SRC_REMOTE_BRANCH')
-new_branch_name = config('SRC_REMOTE_BRANCH')
+new_branch_name = config('NEW_REMOTE_BRANCH')
 
 def handle_remove_readonly(func, path, exc):
     """
