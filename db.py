@@ -5,52 +5,136 @@ from decouple import config
 import sys
 import os
 import re
-import pandas as pd
+from datetime import datetime
+from typing import Tuple, List, Optional
+
+
+# Настройка логгирования
+def setup_logging(log_folder: str) -> None:
+    """
+    Настраивает систему логгирования.
+
+    Параметры:
+    log_folder (str): Путь к папке для лог-файлов.
+    """
+    os.makedirs(log_folder, exist_ok=True)
+    log_file_name = datetime.now().strftime("%d%m%Y")
+    log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
+    logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
+
+
+setup_logging("logs")
 
 # Учетные данные для подключения к базе данных
 try:
-    username = config("DB_USERNAME")
-    password = config("DB_PASSWORD")
-    dsn = config("DB_DSN")
+    username: str = config("DB_USERNAME")
+    password: str = config("DB_PASSWORD")
+    dsn: str = config("DB_DSN")
 except Exception as e:
     logging.error(f"Ошибка при чтении учетных данных: {e}")
     sys.exit(1)
 
 
-def set_cfg_ora_clnt():
+def set_cfg_ora_clnt() -> None:
     """
-    Устанавливает конфигурацию Oracle-клиента в зависимости от операционной системы.
+    Инициализирует Oracle-клиент.
 
-    Возвращает:
-    str: Путь к каталогу конфигурации Oracle-клиента.
+    Raises:
+    sys.exit(1): В случае ошибки инициализации Oracle-клиента.
     """
+    logging.info("Инициализация Oracle-клиента")
     try:
         if sys.platform.startswith("linux"):
             ora.defaults.config_dir = os.path.join(os.environ.get("HOME"), "instantclient_21_10")
         elif sys.platform.startswith("win32"):
             ora.defaults.config_dir = (r"C:\oracle\instantclient_21_10\network\admin")
+        logging.info("Oracle-клиент успешно инициализирован")
     except Exception as err:
         logging.error("Ошибка инициализации Oracle-клиента!")
         logging.error(err)
         sys.exit(1)
-    return ora.defaults.config_dir
 
 
-def create_temp_table():
+def connect_db() -> Tuple[ora.Connection, ora.Cursor]:
     """
-    Создает временную таблицу для хранения данных из CSV файла.
+    Подключается к базе данных.
 
-    Действия:
-    1. Подключается к базе данных.
-    2. Удаляет таблицу TEASR_DEF, если она существует.
-    3. Создает новую таблицу TEASR_DEF с заданной структурой.
-    4. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
+    Returns:
+    Tuple[ora.Connection, ora.Cursor]: Кортеж с объектами подключения и курсора.
+
+    Raises:
+    sys.exit(1): В случае ошибки подключения к базе данных.
     """
-    connection = None
-    cursor = None
+    logging.info("Подключение к базе данных")
     try:
         connection = ora.connect(user=username, password=password, dsn=dsn)
         cursor = connection.cursor()
+        logging.info("Подключение к базе данных успешно установлено")
+        return connection, cursor
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        sys.exit(1)
+
+
+def close_db(connection: ora.Connection, cursor: ora.Cursor) -> None:
+    """
+    Закрывает подключение к базе данных.
+
+    Параметры:
+    connection (ora.Connection): Объект подключения к базе данных.
+    cursor (ora.Cursor): Объект курсора базы данных.
+    """
+    logging.info("Закрытие подключения к базе данных")
+    if cursor is not None:
+        cursor.close()
+    if connection is not None:
+        connection.close()
+    logging.info("Подключение к базе данных закрыто")
+
+
+def execute_sql(cursor: ora.Cursor, sql: str, params: Optional[dict] = None) -> None:
+    """
+    Выполняет SQL-запрос.
+
+    Параметры:
+    cursor (ora.Cursor): Объект курсора базы данных.
+    sql (str): SQL-запрос для выполнения.
+    params (Optional[dict]): Параметры запроса.
+
+    Raises:
+    ora.DatabaseError: В случае ошибки базы данных.
+    """
+    logging.info(f"Выполнение SQL-запроса: {sql}")
+    try:
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+        logging.info("SQL-запрос выполнен успешно")
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        raise
+    except Exception as e:
+        logging.error(f"Ошибка: {e}")
+        raise
+
+
+def create_temp_table() -> None:
+    """
+    Создает временную таблицу в базе данных.
+
+    Raises:
+    Exception: В случае ошибки при создании таблицы.
+    """
+    logging.info("Создание временной таблицы")
+    connection, cursor = None, None
+    try:
+        connection, cursor = connect_db()
 
         drop_table_sql = """
             BEGIN
@@ -62,9 +146,6 @@ def create_temp_table():
                     END IF;
             END;
             """
-        cursor.execute(drop_table_sql)
-        logging.info("Существующая таблица удалена, если она была")
-
         create_table_sql = """
             CREATE TABLE "BIS"."TEASR_DEF" (
                  "DEF" VARCHAR2(20), 
@@ -76,49 +157,29 @@ def create_temp_table():
                  "INN" VARCHAR2(130)
                  )
             """
-        cursor.execute(create_table_sql)
+        execute_sql(cursor, drop_table_sql)
+        logging.info("Существующая таблица удалена, если она была")
+        execute_sql(cursor, create_table_sql)
         logging.info("Таблица для данных CSV создана")
 
-    except ora.DatabaseError as e:
-        error, = e.args
-        if error.code == 942:  # Ошибка - таблица не существует
-            logging.info("Таблица TEASR_DEF не существует, создаем новую.")
-            create_table_sql = """
-                CREATE TABLE "BIS"."TEASR_DEF" (
-                     "DEF" VARCHAR2(20), 
-                     "ST" VARCHAR2(20), 
-                     "EN" VARCHAR2(20), 
-                     "CO" VARCHAR2(20), 
-                     "OP" VARCHAR2(200), 
-                     "DIR" VARCHAR2(500), 
-                     "INN" VARCHAR2(130)
-                     )
-                """
-            cursor.execute(create_table_sql)
-            logging.info("Таблица для данных CSV создана успешно.")
-        else:
-            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
-            print(f"Ошибка базы данных: {error.code}, {error.message}")
     except Exception as e:
         logging.error(f"Ошибка: {e}")
         print(f"Ошибка: {e}")
     finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
+        close_db(connection, cursor)
 
 
-def is_safe_csv_file(csv_path):
+def is_safe_csv_file(csv_path: str) -> bool:
     """
-    Проверяет CSV файл на наличие подозрительных паттернов.
+    Проверяет безопасность CSV-файла на наличие подозрительных паттернов.
 
     Параметры:
-    csv_path (str): Путь к CSV файлу.
+    csv_path (str): Путь к CSV-файлу.
 
-    Возвращает:
-    bool: True, если файл безопасен, иначе False.
+    Returns:
+    bool: True, если CSV-файл безопасен, False в противном случае.
     """
+    logging.info(f"Проверка безопасности CSV файла: {csv_path}")
     suspicious_patterns = [
         r"\bSELECT\b", r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b",
         r"\bDROP\b", r"\bCREATE\b", r"\bALTER\b", r"\bEXEC\b", r"\bEVAL\b",
@@ -151,21 +212,14 @@ def is_safe_csv_file(csv_path):
     return safe
 
 
-def insert_csv_data(file_path):
+def insert_csv_standart_data(file_path: str) -> None:
     """
-    Загружает данные из CSV файла в таблицу TEASR_DEF.
+    Загружает данные из CSV файла в базу данных.
 
     Параметры:
-    file_path (str): Путь к файлу CSV, который нужно загрузить.
-
-    Действия:
-    1. Проверяет, что файл существует и является CSV.
-    2. Проверяет файл на наличие подозрительных паттернов.
-    3. Подключается к базе данных.
-    4. Читает данные из CSV файла.
-    5. Пакетно вставляет данные в таблицу TEASR_DEF.
-    6. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
+    file_path (str): Путь к CSV файлу.
     """
+    logging.info(f"Загрузка данных из CSV файла: {file_path}")
     if not os.path.isfile(file_path):
         logging.error(f"Файл {file_path} не существует.")
         print(f"Файл {file_path} не существует.")
@@ -181,11 +235,9 @@ def insert_csv_data(file_path):
         print("CSV файл не прошел проверку на безопасность.")
         return
 
-    connection = None
-    cursor = None
+    connection, cursor = None, None
     try:
-        connection = ora.connect(user=username, password=password, dsn=dsn)
-        cursor = connection.cursor()
+        connection, cursor = connect_db()
 
         with open(file_path, newline='', encoding='utf-8') as csvfile:
             csv_reader = csv.reader(csvfile, delimiter=';')
@@ -217,174 +269,97 @@ def insert_csv_data(file_path):
 
     except ora.DatabaseError as e:
         error, = e.args
-        if error.code == 942:  # Ошибка - таблица не существует
-            logging.error(f"Таблица TEASR_DEF не существует.")
-        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
-            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
-        else:
-            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
         print(f"Ошибка базы данных: {error.code}, {error.message}")
-    except ora.InterfaceError as e:
-        logging.error(f"Ошибка подключения к базе данных: {e}")
-        print(f"Ошибка подключения к базе данных: {e}")
-    except FileNotFoundError as e:
-        logging.error(f"Файл не найден: {e}")
-        print(f"Файл не найден: {e}")
     except Exception as e:
         logging.error(f"Ошибка при загрузке данных из файла: {e}")
         print(f"Ошибка при загрузке данных из файла: {e}")
     finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
+        close_db(connection, cursor)
 
 
-def get_drct_id(name_csv):
+def get_drct_id(name_csv: str) -> List[Tuple]:
     """
-    Выполняет SQL-запрос для получения DRCT_DRCT_ID по указанному NAME_CSV.
+    Получает DRCT_DRCT_ID для заданного NAME_CSV.
 
     Параметры:
     name_csv (str): Значение NAME_CSV для поиска.
 
-    Возвращает:
-    list: Список результатов запроса.
+    Returns:
+    List[Tuple]: Список кортежей с результатами запроса.
     """
-    connection = None
-    cursor = None
+    logging.info(f"Получение DRCT_DRCT_ID для NAME_CSV: {name_csv}")
+    connection, cursor = None, None
     result = []
 
     try:
-        connection = ora.connect(user=username, password=password, dsn=dsn)
-        cursor = connection.cursor()
-
+        connection, cursor = connect_db()
         query = "SELECT DRCT_DRCT_ID FROM BIS.TEASR_PREFIX_DIRECTIONS WHERE NAME_CSV = :name_csv"
-        cursor.execute(query, name_csv=name_csv)
-
+        execute_sql(cursor, query, {'name_csv': name_csv})
         result = cursor.fetchall()
-
-    except ora.DatabaseError as e:
-        error, = e.args
-        if error.code == 942:  # Ошибка - таблица не существует
-            logging.error(f"Таблица TEASR_PREFIX_DIRECTIONS не существует.")
-        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
-            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
-        else:
-            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
-        print(f"Ошибка базы данных: {error.code}, {error.message}")
     except Exception as e:
         logging.error(f"Ошибка: {e}")
         print(f"Ошибка: {e}")
     finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
+        close_db(connection, cursor)
 
     return result
 
 
-def get_all_msisdn():
+def get_all_msisdn() -> List[Tuple]:
     """
     Получает все строки из таблицы TEASR_PREFIX_MSISDN.
 
-    Возвращает:
-    list: Список кортежей с результатами запроса.
+    Returns:
+    List[Tuple]: Список кортежей с результатами запроса.
     """
-    connection = None
-    cursor = None
-    try:
-        connection = ora.connect(user=username, password=password, dsn=dsn)
-        cursor = connection.cursor()
+    logging.info("Получение всех строк из таблицы TEASR_PREFIX_MSISDN")
+    connection, cursor = None, None
+    result = []
 
+    try:
+        connection, cursor = connect_db()
         query = """
             SELECT MSISDN_C
             FROM BIS.TEASR_PREFIX_MSISDN
+            WHERE LENGTH(MSISDN_C) = 10 AND MSISDN_C NOT LIKE '%[^0-9]%'
         """
-        cursor.execute(query)
+        execute_sql(cursor, query)
         result = cursor.fetchall()
-
-        return result
-
-    except ora.DatabaseError as e:
-        error, = e.args
-        if error.code == 942:  # Ошибка - таблица не существует
-            logging.error(f"Таблица TEASR_PREFIX_MSISDN не существует.")
-        elif error.code == 904:  # Ошибка - неверный идентификатор объекта (возможно, отсутствует столбец)
-            logging.error(f"Неверный идентификатор объекта в SQL запросе: {error.message}")
-        else:
-            logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
-        return None
     except Exception as e:
         logging.error(f"Ошибка: {e}")
-        return None
     finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
+        close_db(connection, cursor)
+
+    return result
 
 
-def process_and_insert_data():
+def execute_max_pset_id_query() -> int:
     """
-    Выполняет логику обработки данных и вставки их в таблицы базы данных.
+    Получает максимальный PSET_ID из двух таблиц.
+
+    Returns:
+    int: Максимальное значение PSET_ID.
     """
-    # Установим конфигурацию Oracle клиента
-    set_cfg_ora_clnt()
-
-    # Путь к CSV файлу
-    file_path = 'output.csv'
-
-    # Загрузка данных из CSV файла
-    data = pd.read_csv(file_path)
-
-    # Подключение к базе данных
-    connection = None
-    cursor = None
+    logging.info("Получение максимального PSET_ID из двух таблиц")
+    connection, cursor = None, None
     try:
-        connection = ora.connect(user=username, password=password, dsn=dsn)
-        cursor = connection.cursor()
+        connection, cursor = connect_db()
 
-        # Определение максимальных значений PSET_ID
-        cursor.execute("SELECT max(ps.PSET_ID) FROM prefix_sets ps")
+        # Выполнение первого запроса
+        cursor.execute("SELECT MAX(PSET_ID) FROM BIS.PREFIX_SETS")
         max_pset_id = cursor.fetchone()[0] or 0
 
-        cursor.execute("SELECT max(p.PSET_ID) FROM teasr_prefix_sets_exp_csv p")
+        # Выполнение второго запроса
+        cursor.execute("SELECT MAX(PSET_ID) FROM BIS.TEASR_PREFIX_SETS_EXP_CSV")
         max_teasr_pset_id = cursor.fetchone()[0] or 0
 
+        # Логика обновления переменной c
         c = max(max_pset_id, max_teasr_pset_id)
 
-        # Вставка данных из CSV файла в соответствующие таблицы
-        for index, row in data.iterrows():
-            p, b = row['prefix'], row['region_id']
-            c += 1
+        logging.info(f"Максимальное значение PSET_ID: {c}")
 
-            if str(p).startswith('D'):
-                cursor.execute("""
-                    INSERT INTO teasr_prefix_sets_exp_csv (PSET_ID, PREFIX, REGION_ID)
-                    VALUES (:1, :2, :3)
-                """, (c, p, b))
-
-                cursor.execute("""
-                    INSERT INTO bis.teasr_mnp_rating_histories_exp_csv (PREFIX, REGION_ID)
-                    VALUES (:1, :2)
-                """, (p, b))
-            else:
-                cursor.execute("""
-                    INSERT INTO teasr_prefix_sets_exp_csv (PSET_ID, PREFIX, REGION_ID)
-                    VALUES (:1, :2, :3)
-                """, (c, p, b))
-
-            cursor.execute("""
-                INSERT INTO teasr_ins_matrix_dir_hist_exp_csv (COLUMN1, COLUMN2, ...)
-                SELECT md.COLUMN1, md.COLUMN2, ...
-                FROM teasr_ins_matrix_dir_hist_csv md
-                WHERE md.drct_drct_id = :1
-            """, (b,))
-
-        # Коммит транзакции
-        connection.commit()
-        logging.info("Данные успешно обработаны и вставлены в таблицы базы данных.")
+        return c
 
     except ora.DatabaseError as e:
         error, = e.args
@@ -394,69 +369,100 @@ def process_and_insert_data():
         logging.error(f"Ошибка: {e}")
         print(f"Ошибка: {e}")
     finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
+        close_db(connection, cursor)
 
-def create_final_table():
-    """
-    Создает временную таблицу для хранения данных из CSV файла.
 
-    Действия:
-    1. Подключается к базе данных.
-    2. Удаляет таблицу TEASR_DEF, если она существует.
-    3. Создает новую таблицу TEASR_DEF с заданной структурой.
-    4. Записывает результат в лог и выводит сообщение на экран в случае ошибки.
+def is_prefix_exists(cursor: ora.Cursor, prefix: str) -> bool:
     """
-    connection = None
-    cursor = None
+    Проверяет существование PREFIX в таблице.
+
+    Параметры:
+    cursor (ora.Cursor): Объект курсора базы данных.
+    prefix (str): Значение PREFIX для проверки.
+
+    Returns:
+    bool: True, если PREFIX существует, False в противном случае.
+    """
+    logging.info(f"Проверка существования PREFIX: {prefix}")
+    query = "SELECT 1 FROM \"BIS\".\"TEASR_PREFIX_SETS_EXP_CSV\" WHERE \"PREFIX\" = :prefix"
+    cursor.execute(query, [prefix])
+    exists = cursor.fetchone() is not None
+    logging.info(f"PREFIX {'существует' if exists else 'не существует'}")
+    return exists
+
+
+def insert_csv_updated_data(file_path: str) -> None:
+    """
+    Загружает обновленные данные из CSV файла в базу данных.
+
+    Параметры:
+    file_path (str): Путь к CSV файлу.
+    """
+    logging.info(f"Загрузка данных из CSV файла: {file_path}")
+    if not os.path.isfile(file_path):
+        logging.error(f"Файл {file_path} не существует.")
+        print(f"Файл {file_path} не существует.")
+        return
+
+    if not file_path.lower().endswith('.csv'):
+        logging.error(f"Файл {file_path} не является CSV файлом.")
+        print(f"Файл {file_path} не является CSV файлом.")
+        return
+
+    if not is_safe_csv_file(file_path):
+        logging.error("CSV файл не прошел проверку на безопасность.")
+        print("CSV файл не прошел проверку на безопасность.")
+        return
+
+    connection, cursor = None, None
     try:
-        connection = ora.connect(user=username, password=password, dsn=dsn)
-        cursor = connection.cursor()
+        connection, cursor = connect_db()
 
-        drop_table_sql = """
-            BEGIN
-                EXECUTE IMMEDIATE 'DROP TABLE "BIS"."TEASR_PREFIX_SETS_EXP_CSV"';
-            EXCEPTION
-                WHEN OTHERS THEN
-                    IF SQLCODE != -942 THEN
-                        RAISE;
-                    END IF;
-            END;
-            """
-        cursor.execute(drop_table_sql)
-        logging.info("Существующая таблица удалена, если она была")
+        with open(file_path, newline='', encoding='utf-8') as csvfile:
+            csv_reader = csv.reader(csvfile, delimiter=',')
+            headers = next(csv_reader)  # Пропускаем заголовок
+            batch_size = config('BATCH_SIZE', cast=int)
+            sql = """INSERT INTO "BIS"."TEASR_PREFIX_SETS_EXP_CSV" ("PSET_ID", "NUMBER_HISTORY", "OPER_OPER_ID", "PREFIX", "START_DATE",
+                                           "END_DATE", "NAVI_USER", "NAVI_DATE", "DRCT_DRCT_ID", "CIT_CIT_ID",
+                                           "COU_COU_ID", "PSET_COMMENT", "ODRC_ODRC_ID", "ZONE_ZONE_ID", "AOB_AOB_ID",
+                                           "RTCM_RTCM_ID", "ACTION") VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, 
+                                           :11, :12, :13, :14, :15, :16, :17)"""
+            data = []
+            for line in csv_reader:
+                if len(line) == 17:  # Проверка на количество элементов в строке
+                    pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user, navi_date, drct_drct_id, cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id, rtcm_rtcm_id, action = line
+                    if is_prefix_exists(cursor, prefix):
+                        logging.warning(f"Значение PREFIX '{prefix}' уже существует в таблице. Строка пропущена.")
+                        continue
+                    try:
+                        start_date = datetime.strptime(start_date, '%d-%m-%Y')
+                        end_date = datetime.strptime(end_date, '%d-%m-%Y')
+                        navi_date = datetime.strptime(navi_date, '%d-%m-%Y %H:%M:%S')
+                        data.append((pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user,
+                                     navi_date, drct_drct_id,
+                                     cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id,
+                                     rtcm_rtcm_id, action))
+                    except ValueError as e:
+                        logging.warning(f"Неверный формат данных в строке: {line}. Ошибка: {e}")
+                        continue
+                    if len(data) % batch_size == 0:
+                        cursor.executemany(sql, data)
+                        data = []
 
-        create_table_sql = """
-            CREATE TABLE "BIS"."TEASR_PREFIX_SETS_EXP_CSV" (
-                     "PSET_ID" NUMBER(10,0) NOT NULL ENABLE, 
-                     "NUMBER_HISTORY" NUMBER(10,0) NOT NULL ENABLE, 
-                     "OPER_OPER_ID" NUMBER(10,0) NOT NULL ENABLE, 
-                     "PREFIX" VARCHAR2(63) NOT NULL ENABLE, 
-                     "START_DATE" DATE NOT NULL ENABLE, 
-                     "END_DATE" DATE NOT NULL ENABLE, 
-                     "NAVI_USER" VARCHAR2(70) NOT NULL ENABLE, 
-                     "NAVI_DATE" DATE NOT NULL ENABLE, 
-                     "DRCT_DRCT_ID" NUMBER(10,0), 
-                     "CIT_CIT_ID" NUMBER(10,0), 
-                     "COU_COU_ID" NUMBER(10,0), 
-                     "PSET_COMMENT" VARCHAR2(2000), 
-                     "ODRC_ODRC_ID" NUMBER(10,0), 
-                     "ZONE_ZONE_ID" NUMBER(10,0) NOT NULL ENABLE, 
-                     "AOB_AOB_ID" NUMBER(10,0), 
-                     "RTCM_RTCM_ID" NUMBER(9,0), 
-                     "ACTION" VARCHAR2(10)
-                     )
+            if data:
+                cursor.executemany(sql, data)
 
-            """
-        cursor.execute(create_table_sql)
-        logging.info("Таблица для данных CSV создана")
+        connection.commit()
+        logging.info(f"Данные из файла {file_path} успешно загружены в базу данных")
+        print(f"Данные из файла {file_path} успешно загружены в базу данных")
+
+    except ora.DatabaseError as e:
+        error, = e.args
+        logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
+        print(f"Ошибка базы данных: {error.code}, {error.message}")
     except Exception as e:
-        logging.error(f"Ошибка: {e}")
-        print(f"Ошибка: {e}")
+        logging.error(f"Ошибка при загрузке данных из файла: {e}")
+        print(f"Ошибка при загрузке данных из файла: {e}")
     finally:
-        if cursor is not None:
-            cursor.close()
-        if connection is not None:
-            connection.close()
+        close_db(connection, cursor)
+
