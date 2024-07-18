@@ -6,28 +6,42 @@ import stat
 import time
 import datetime
 import gc
+import sys
+from typing import Callable, Optional
 
 # Путь к локальному CSV файлу, который нужно отправить
-csv_file_path = config('FILE_FOR_PUSH_NAME')
+csv_file_path: str = config('FILE_FOR_PUSH_NAME')
 
 # Путь к целевому локальному репозиторию
-target_repo_path = 'tmp/test'
+target_repo_path: str = 'tmp/test'
 
 # URL удалённого репозитория
-remote_repo_url = config('GIT_URL')
-remote_branch = config('SRC_REMOTE_BRANCH')
-new_branch_name = config('NEW_REMOTE_BRANCH')
+remote_repo_url: str = config('GIT_URL')
+remote_branch: str = config('SRC_REMOTE_BRANCH')
+new_branch_name: str = config('NEW_REMOTE_BRANCH')
 
-def handle_remove_readonly(func, path, exc):
+
+def handle_remove_readonly(func: Callable, path: str, exc: Optional[Exception]) -> None:
     """
     Изменяет права доступа для удаления файла или папки.
+
+    Параметры:
+    func (Callable): Функция удаления файла или папки.
+    path (str): Путь к файлу или папке.
+    exc (Optional[Exception]): Исключение, возникшее при попытке удаления.
     """
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
-def delete_tmp_folder(folder_path, max_retries=5, delay=2):
+
+def delete_tmp_folder(folder_path: str, max_retries: int = 5, delay: int = 2) -> None:
     """
     Удаляет папку, если она существует, с повторными попытками.
+
+    Параметры:
+    folder_path (str): Путь к папке, которую нужно удалить.
+    max_retries (int): Максимальное количество попыток удаления.
+    delay (int): Задержка между попытками удаления.
     """
     if os.path.exists(folder_path):
         for i in range(max_retries):
@@ -42,7 +56,8 @@ def delete_tmp_folder(folder_path, max_retries=5, delay=2):
     else:
         print(f"Папка {folder_path} не существует.")
 
-def upload_to_git_via_ssh():
+
+def upload_to_git_via_ssh() -> None:
     """
     Копирует файл в локальный репозиторий и отправляет его в удалённый репозиторий на новую ветку.
     """
@@ -69,7 +84,7 @@ def upload_to_git_via_ssh():
 
         # Получение текущей даты и времени
         current_time = datetime.datetime.now()
-        formatted_time = current_time.strftime("%Y%m%d%H%M")
+        formatted_time = current_time.strftime("%Y%d%m%H%M")
 
         # Создание директории для файла
         target_directory = os.path.join(target_repo_path, 'components', 'base', formatted_time)
@@ -105,9 +120,11 @@ def upload_to_git_via_ssh():
 
     except Exception as e:
         print(f"Произошла ошибка: {e}")
+        sys.exit(1)
 
     # Удаление временной папки после завершения работы
     delete_tmp_folder('tmp')
+
 
 # Пример использования
 if __name__ == "__main__":

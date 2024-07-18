@@ -153,7 +153,7 @@ def main():
     user_input = input("Вы хотите запушить файл в Git? (y/n): ").strip().lower()
     if user_input in ('y', 'yes'):
         try:
-            git_upload.upload_to_git()
+            git_upload.upload_to_git_via_ssh()
         except Exception as e:
             logging.error(f"Ошибка при загрузке файла в Git: {e}")
             print(f"Ошибка при загрузке файла в Git: {e}")

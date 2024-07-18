@@ -6,25 +6,42 @@ import sys
 import os
 import re
 from datetime import datetime
+from typing import Tuple, List, Optional
+
+
 # Настройка логгирования
-def setup_logging(log_folder):
+def setup_logging(log_folder: str) -> None:
+    """
+    Настраивает систему логгирования.
+
+    Параметры:
+    log_folder (str): Путь к папке для лог-файлов.
+    """
     os.makedirs(log_folder, exist_ok=True)
     log_file_name = datetime.now().strftime("%d%m%Y")
     log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
     logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
 
+
 setup_logging("logs")
 
 # Учетные данные для подключения к базе данных
 try:
-    username = config("DB_USERNAME")
-    password = config("DB_PASSWORD")
-    dsn = config("DB_DSN")
+    username: str = config("DB_USERNAME")
+    password: str = config("DB_PASSWORD")
+    dsn: str = config("DB_DSN")
 except Exception as e:
     logging.error(f"Ошибка при чтении учетных данных: {e}")
     sys.exit(1)
 
-def set_cfg_ora_clnt():
+
+def set_cfg_ora_clnt() -> None:
+    """
+    Инициализирует Oracle-клиент.
+
+    Raises:
+    sys.exit(1): В случае ошибки инициализации Oracle-клиента.
+    """
     logging.info("Инициализация Oracle-клиента")
     try:
         if sys.platform.startswith("linux"):
@@ -37,7 +54,17 @@ def set_cfg_ora_clnt():
         logging.error(err)
         sys.exit(1)
 
-def connect_db():
+
+def connect_db() -> Tuple[ora.Connection, ora.Cursor]:
+    """
+    Подключается к базе данных.
+
+    Returns:
+    Tuple[ora.Connection, ora.Cursor]: Кортеж с объектами подключения и курсора.
+
+    Raises:
+    sys.exit(1): В случае ошибки подключения к базе данных.
+    """
     logging.info("Подключение к базе данных")
     try:
         connection = ora.connect(user=username, password=password, dsn=dsn)
@@ -52,7 +79,15 @@ def connect_db():
         logging.error(f"Ошибка: {e}")
         sys.exit(1)
 
-def close_db(connection, cursor):
+
+def close_db(connection: ora.Connection, cursor: ora.Cursor) -> None:
+    """
+    Закрывает подключение к базе данных.
+
+    Параметры:
+    connection (ora.Connection): Объект подключения к базе данных.
+    cursor (ora.Cursor): Объект курсора базы данных.
+    """
     logging.info("Закрытие подключения к базе данных")
     if cursor is not None:
         cursor.close()
@@ -60,7 +95,19 @@ def close_db(connection, cursor):
         connection.close()
     logging.info("Подключение к базе данных закрыто")
 
-def execute_sql(cursor, sql, params=None):
+
+def execute_sql(cursor: ora.Cursor, sql: str, params: Optional[dict] = None) -> None:
+    """
+    Выполняет SQL-запрос.
+
+    Параметры:
+    cursor (ora.Cursor): Объект курсора базы данных.
+    sql (str): SQL-запрос для выполнения.
+    params (Optional[dict]): Параметры запроса.
+
+    Raises:
+    ora.DatabaseError: В случае ошибки базы данных.
+    """
     logging.info(f"Выполнение SQL-запроса: {sql}")
     try:
         if params:
@@ -76,7 +123,14 @@ def execute_sql(cursor, sql, params=None):
         logging.error(f"Ошибка: {e}")
         raise
 
-def create_temp_table():
+
+def create_temp_table() -> None:
+    """
+    Создает временную таблицу в базе данных.
+
+    Raises:
+    Exception: В случае ошибки при создании таблицы.
+    """
     logging.info("Создание временной таблицы")
     connection, cursor = None, None
     try:
@@ -114,7 +168,17 @@ def create_temp_table():
     finally:
         close_db(connection, cursor)
 
-def is_safe_csv_file(csv_path):
+
+def is_safe_csv_file(csv_path: str) -> bool:
+    """
+    Проверяет безопасность CSV-файла на наличие подозрительных паттернов.
+
+    Параметры:
+    csv_path (str): Путь к CSV-файлу.
+
+    Returns:
+    bool: True, если CSV-файл безопасен, False в противном случае.
+    """
     logging.info(f"Проверка безопасности CSV файла: {csv_path}")
     suspicious_patterns = [
         r"\bSELECT\b", r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b",
@@ -147,7 +211,14 @@ def is_safe_csv_file(csv_path):
 
     return safe
 
-def insert_csv_standart_data(file_path):
+
+def insert_csv_standart_data(file_path: str) -> None:
+    """
+    Загружает данные из CSV файла в базу данных.
+
+    Параметры:
+    file_path (str): Путь к CSV файлу.
+    """
     logging.info(f"Загрузка данных из CSV файла: {file_path}")
     if not os.path.isfile(file_path):
         logging.error(f"Файл {file_path} не существует.")
@@ -206,7 +277,17 @@ def insert_csv_standart_data(file_path):
     finally:
         close_db(connection, cursor)
 
-def get_drct_id(name_csv):
+
+def get_drct_id(name_csv: str) -> List[Tuple]:
+    """
+    Получает DRCT_DRCT_ID для заданного NAME_CSV.
+
+    Параметры:
+    name_csv (str): Значение NAME_CSV для поиска.
+
+    Returns:
+    List[Tuple]: Список кортежей с результатами запроса.
+    """
     logging.info(f"Получение DRCT_DRCT_ID для NAME_CSV: {name_csv}")
     connection, cursor = None, None
     result = []
@@ -224,7 +305,14 @@ def get_drct_id(name_csv):
 
     return result
 
-def get_all_msisdn():
+
+def get_all_msisdn() -> List[Tuple]:
+    """
+    Получает все строки из таблицы TEASR_PREFIX_MSISDN.
+
+    Returns:
+    List[Tuple]: Список кортежей с результатами запроса.
+    """
     logging.info("Получение всех строк из таблицы TEASR_PREFIX_MSISDN")
     connection, cursor = None, None
     result = []
@@ -245,7 +333,14 @@ def get_all_msisdn():
 
     return result
 
-def execute_max_pset_id_query():
+
+def execute_max_pset_id_query() -> int:
+    """
+    Получает максимальный PSET_ID из двух таблиц.
+
+    Returns:
+    int: Максимальное значение PSET_ID.
+    """
     logging.info("Получение максимального PSET_ID из двух таблиц")
     connection, cursor = None, None
     try:
@@ -276,7 +371,18 @@ def execute_max_pset_id_query():
     finally:
         close_db(connection, cursor)
 
-def is_prefix_exists(cursor, prefix):
+
+def is_prefix_exists(cursor: ora.Cursor, prefix: str) -> bool:
+    """
+    Проверяет существование PREFIX в таблице.
+
+    Параметры:
+    cursor (ora.Cursor): Объект курсора базы данных.
+    prefix (str): Значение PREFIX для проверки.
+
+    Returns:
+    bool: True, если PREFIX существует, False в противном случае.
+    """
     logging.info(f"Проверка существования PREFIX: {prefix}")
     query = "SELECT 1 FROM \"BIS\".\"TEASR_PREFIX_SETS_EXP_CSV\" WHERE \"PREFIX\" = :prefix"
     cursor.execute(query, [prefix])
@@ -284,7 +390,14 @@ def is_prefix_exists(cursor, prefix):
     logging.info(f"PREFIX {'существует' if exists else 'не существует'}")
     return exists
 
-def insert_csv_updated_data(file_path):
+
+def insert_csv_updated_data(file_path: str) -> None:
+    """
+    Загружает обновленные данные из CSV файла в базу данных.
+
+    Параметры:
+    file_path (str): Путь к CSV файлу.
+    """
     logging.info(f"Загрузка данных из CSV файла: {file_path}")
     if not os.path.isfile(file_path):
         logging.error(f"Файл {file_path} не существует.")
@@ -325,8 +438,10 @@ def insert_csv_updated_data(file_path):
                         start_date = datetime.strptime(start_date, '%d-%m-%Y')
                         end_date = datetime.strptime(end_date, '%d-%m-%Y')
                         navi_date = datetime.strptime(navi_date, '%d-%m-%Y %H:%M:%S')
-                        data.append((pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user, navi_date, drct_drct_id,
-                                     cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id, rtcm_rtcm_id, action))
+                        data.append((pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user,
+                                     navi_date, drct_drct_id,
+                                     cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id,
+                                     rtcm_rtcm_id, action))
                     except ValueError as e:
                         logging.warning(f"Неверный формат данных в строке: {line}. Ошибка: {e}")
                         continue
@@ -350,3 +465,4 @@ def insert_csv_updated_data(file_path):
         print(f"Ошибка при загрузке данных из файла: {e}")
     finally:
         close_db(connection, cursor)
+
