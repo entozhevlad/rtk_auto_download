@@ -4,6 +4,7 @@ import git
 from decouple import config
 import stat
 import time
+import datetime
 import gc
 
 # Путь к локальному CSV файлу, который нужно отправить
@@ -66,9 +67,17 @@ def upload_to_git_via_ssh():
         target_repo.head.reference = new_branch
         target_repo.head.reset(index=True, working_tree=True)
 
+        # Получение текущей даты и времени
+        current_time = datetime.datetime.now()
+        formatted_time = current_time.strftime("%Y%m%d%H%M")
+
+        # Создание директории для файла
+        target_directory = os.path.join(target_repo_path, 'components', 'base', formatted_time)
+        os.makedirs(target_directory, exist_ok=True)
+
         # Копирование файла в целевой репозиторий
         try:
-            target_file_path = os.path.join(target_repo_path, os.path.basename(csv_file_path))
+            target_file_path = os.path.join(target_directory, os.path.basename(csv_file_path))
             shutil.copy2(csv_file_path, target_file_path)
         except (shutil.Error, IOError) as e:
             print(f"Ошибка при копировании файла: {e}")
