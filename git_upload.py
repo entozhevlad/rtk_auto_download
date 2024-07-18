@@ -41,7 +41,7 @@ def delete_tmp_folder(folder_path, max_retries=5, delay=2):
     else:
         print(f"Папка {folder_path} не существует.")
 
-def upload_to_git():
+def upload_to_git_via_ssh():
     """
     Копирует файл в локальный репозиторий и отправляет его в удалённый репозиторий на новую ветку.
     """
@@ -102,4 +102,4 @@ def upload_to_git():
 
 # Пример использования
 if __name__ == "__main__":
-    upload_to_git()
+    upload_to_git_via_ssh()
