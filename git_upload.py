@@ -84,7 +84,7 @@ def upload_to_git_via_ssh() -> None:
 
         # Получение текущей даты и времени
         current_time = datetime.datetime.now()
-        formatted_time = current_time.strftime("%Y%d%m%H%M")
+        formatted_time = current_time.strftime("%Y%m%d%H%M")
 
         # Создание директории для файла
         target_directory = os.path.join(target_repo_path, 'components', 'base', formatted_time)
