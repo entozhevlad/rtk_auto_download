@@ -4,7 +4,7 @@ import git
 from decouple import config
 
 # Путь к локальному CSV файлу, который нужно отправить
-csv_file_path = 'DEF-9xx.csv'
+csv_file_path = 'output.csv'
 
 # Путь к целевому локальному репозиторию
 target_repo_path = 'tmp/test'

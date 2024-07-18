@@ -1,6 +1,33 @@
 import pandas as pd
+import logging
 from db import get_drct_id, get_all_msisdn, execute_max_pset_id_query, insert_csv_updated_data
 from datetime import datetime
+import os
+
+# Настройка логгера
+def setup_logging(log_folder):
+    """
+    Настройка логгера для записи в файл 'prfDDMMYYYY.log' в указанной папке.
+
+    Параметры:
+    log_folder (str): Путь к папке, где будут сохраняться файлы логов.
+
+    Действия:
+    1. Создает папку для логов, если она не существует.
+    2. Настраивает логгер для записи сообщений в файл с текущей датой в формате 'prfDDMMYYYY.log'.
+    """
+    os.makedirs(log_folder, exist_ok=True)
+    log_file_name = datetime.now().strftime("%d%m%Y")
+    log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
+
+    logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # Логгируем информацию о настройке логгера
+    logging.info(f'Настроен логгер для записи в файл: {log_file_path}')
+
+    # Логгируем информацию о текущем времени
+    logging.info(f'Текущее время: {datetime.now()}')
+
 
 def bin_search(df, phone_number):
     prefix = phone_number[:3]
@@ -28,13 +55,14 @@ def bin_search(df, phone_number):
             high = mid - 1
     return None
 
+
 def compress_numbers(numbers):
     compressed = []
     i = 0
     while i < len(numbers):
         # Проверяем, есть ли 10 подряд идущих чисел с последовательными последними цифрами
         if i + 9 < len(numbers) and all(
-            numbers[i + j] % 10 == j for j in range(10)
+                numbers[i + j] % 10 == j for j in range(10)
         ):
             # Добавляем первое число без последнего нуля
             compressed.append(numbers[i] // 10)
@@ -44,17 +72,19 @@ def compress_numbers(numbers):
             i += 1
     return compressed
 
+
 def compress_str(prefix, low, high):
     numbers = []
-    for i in range(len(low)-1, -1,-1):
+    for i in range(len(low) - 1, -1, -1):
         if int(high[i]) - int(low[i]) == 9:
             low = low[:-1]
             high = high[:-1]
         else:
-            numbers = list(range(int(prefix+low), int(prefix+high)+1))
+            numbers = list(range(int(prefix + low), int(prefix + high) + 1))
             break
 
     return numbers
+
 
 def write_to_csv(data, file_path):
     """
@@ -64,8 +94,6 @@ def write_to_csv(data, file_path):
     data (set): Множество кортежей, где каждый кортеж содержит (prefix, region_id).
     file_path (str): Путь к файлу, в который нужно записать данные.
     """
-    import pandas as pd
-
     # Преобразование данных в DataFrame
     df = pd.DataFrame(list(data), columns=['PSET_ID', 'NUMBER_HISTORY', 'OPER_OPER_ID', 'PREFIX', 'START_DATE',
                                            'END_DATE', 'NAVI_USER', 'NAVI_DATE', 'DRCT_DRCT_ID', 'CIT_CIT_ID',
@@ -77,17 +105,19 @@ def write_to_csv(data, file_path):
 
     # Запись DataFrame в CSV файл
     df.to_csv(file_path, index=False)
+
+
 def form_tuple(pset_id, prefix, region_id, nuser):
     """
-        Формирует кортеж с данными для записи в CSV.
+    Формирует кортеж с данными для записи в CSV.
 
-        Параметры:
-        prefix (str): Префикс.
-        region_id (int): Идентификатор региона.
-        nuser (str): Имя пользователя.
+    Параметры:
+    prefix (str): Префикс.
+    region_id (int): Идентификатор региона.
+    nuser (str): Имя пользователя.
 
-        Возвращает:
-        tuple: Кортеж с данными.
+    Возвращает:
+    tuple: Кортеж с данными.
     """
     pset_id = pset_id
     number_history = 1
@@ -104,11 +134,12 @@ def form_tuple(pset_id, prefix, region_id, nuser):
     odrc_odrc_id = None
     zone_zone_id = 0
     aob_aob_id = None
-    rtcm_rtcm_id= None
+    rtcm_rtcm_id = None
     action = 'MERGE'
     tup = (pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user, navi_date, drct_drct_id,
            cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id, rtcm_rtcm_id, action)
     return tup
+
 
 def check_prefix(numbers, capacity, end):
     arr = numbers.copy()
@@ -119,7 +150,7 @@ def check_prefix(numbers, capacity, end):
             cur_l = str(arr[i])
             if len(cur_l) < 10:
                 cur_l += '0' * (10 - len(cur_l))
-            cur_r = str(arr[i+1])
+            cur_r = str(arr[i + 1])
             if len(cur_r) < 10:
                 cur_r += '0' * (10 - len(cur_r))
             tmp = int(cur_r) - int(cur_l)
@@ -137,30 +168,34 @@ def check_prefix(numbers, capacity, end):
     return True if count == capacity else False
 
 
-
 def form_prefix(prefix, low, high, capacity):
     numbers = compress_str(prefix, low, high)
     for _ in range(10):
         numbers = compress_numbers(numbers)
     if check_prefix(numbers, capacity, high):
-        print('Все префиксы корректны')
+        logging.info('Все префиксы корректны')
     else:
-        print('Ошибка при проверки префиксов. Проверьте корректность построения')
+        logging.error('Ошибка при проверке префиксов. Проверьте корректность построения')
 
     return numbers
 
+
 def handle_data():
+    setup_logging('./logs')  # Настройка логгирования
+
     file_path = 'DEF-9xx.csv'
     df = pd.read_csv(file_path, delimiter=';', dtype={'От': str, 'До': str})
-    phone_numbers = get_all_msisdn() # [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
-    print(phone_numbers)
+    phone_numbers = get_all_msisdn()  # [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
     arr = set()
     if phone_numbers:
-        nuser = 'nuser'#input('Введите имя пользователя для NAVI_USER: ')
+        nuser = input('Введите имя пользователя для NAVI_USER: ')
         pset_id = execute_max_pset_id_query()
         prefix_set = set()
         for phone_number in phone_numbers:
             result_str = bin_search(df, phone_number[0])
+            if result_str is None:
+                logging.warning(f'Для номера {phone_number[0]} не найден соответствующий префикс')
+                continue
             prefix = str(result_str['АВС/ DEF'])
             low = result_str['От']
             high = result_str['До']
@@ -173,14 +208,17 @@ def handle_data():
                     tup = form_tuple(pset_id, new_prefix[i], region_id, nuser)
                     pset_id += 1
                     arr.add(tup)
+                    prefix_set.add(new_prefix[i])
+        if not arr:
+            logging.warning('Не удалось сформировать данные для записи в CSV')
 
-            print(arr)
     else:
-        print('Номера не найдены')
+        logging.warning('Номера не найдены')
 
     file_path = 'output.csv'
     write_to_csv(arr, file_path)
     insert_csv_updated_data(file_path)
+
 
 if __name__ == '__main__':
     handle_data()

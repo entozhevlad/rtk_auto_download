@@ -5,8 +5,15 @@ from decouple import config
 import sys
 import os
 import re
-import pandas as pd
 from datetime import datetime
+# Настройка логгирования
+def setup_logging(log_folder):
+    os.makedirs(log_folder, exist_ok=True)
+    log_file_name = datetime.now().strftime("%d%m%Y")
+    log_file_path = os.path.join(log_folder, f"prf{log_file_name}.log")
+    logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(message)s')
+
+setup_logging("logs")
 
 # Учетные данные для подключения к базе данных
 try:
@@ -18,26 +25,24 @@ except Exception as e:
     sys.exit(1)
 
 def set_cfg_ora_clnt():
-    """
-    Устанавливает конфигурацию Oracle-клиента в зависимости от операционной системы.
-    """
+    logging.info("Инициализация Oracle-клиента")
     try:
         if sys.platform.startswith("linux"):
             ora.defaults.config_dir = os.path.join(os.environ.get("HOME"), "instantclient_21_10")
         elif sys.platform.startswith("win32"):
             ora.defaults.config_dir = (r"C:\oracle\instantclient_21_10\network\admin")
+        logging.info("Oracle-клиент успешно инициализирован")
     except Exception as err:
         logging.error("Ошибка инициализации Oracle-клиента!")
         logging.error(err)
         sys.exit(1)
 
 def connect_db():
-    """
-    Создает подключение к базе данных и возвращает connection и cursor.
-    """
+    logging.info("Подключение к базе данных")
     try:
         connection = ora.connect(user=username, password=password, dsn=dsn)
         cursor = connection.cursor()
+        logging.info("Подключение к базе данных успешно установлено")
         return connection, cursor
     except ora.DatabaseError as e:
         error, = e.args
@@ -48,23 +53,21 @@ def connect_db():
         sys.exit(1)
 
 def close_db(connection, cursor):
-    """
-    Закрывает cursor и connection.
-    """
+    logging.info("Закрытие подключения к базе данных")
     if cursor is not None:
         cursor.close()
     if connection is not None:
         connection.close()
+    logging.info("Подключение к базе данных закрыто")
 
 def execute_sql(cursor, sql, params=None):
-    """
-    Выполняет SQL-запрос с заданными параметрами и обрабатывает ошибки.
-    """
+    logging.info(f"Выполнение SQL-запроса: {sql}")
     try:
         if params:
             cursor.execute(sql, params)
         else:
             cursor.execute(sql)
+        logging.info("SQL-запрос выполнен успешно")
     except ora.DatabaseError as e:
         error, = e.args
         logging.error(f"Ошибка базы данных: {error.code}, {error.message}")
@@ -74,9 +77,7 @@ def execute_sql(cursor, sql, params=None):
         raise
 
 def create_temp_table():
-    """
-    Создает временную таблицу для хранения данных из CSV файла.
-    """
+    logging.info("Создание временной таблицы")
     connection, cursor = None, None
     try:
         connection, cursor = connect_db()
@@ -114,9 +115,7 @@ def create_temp_table():
         close_db(connection, cursor)
 
 def is_safe_csv_file(csv_path):
-    """
-    Проверяет CSV файл на наличие подозрительных паттернов.
-    """
+    logging.info(f"Проверка безопасности CSV файла: {csv_path}")
     suspicious_patterns = [
         r"\bSELECT\b", r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b",
         r"\bDROP\b", r"\bCREATE\b", r"\bALTER\b", r"\bEXEC\b", r"\bEVAL\b",
@@ -149,9 +148,7 @@ def is_safe_csv_file(csv_path):
     return safe
 
 def insert_csv_standart_data(file_path):
-    """
-    Загружает данные из CSV файла в таблицу TEASR_DEF.
-    """
+    logging.info(f"Загрузка данных из CSV файла: {file_path}")
     if not os.path.isfile(file_path):
         logging.error(f"Файл {file_path} не существует.")
         print(f"Файл {file_path} не существует.")
@@ -210,9 +207,7 @@ def insert_csv_standart_data(file_path):
         close_db(connection, cursor)
 
 def get_drct_id(name_csv):
-    """
-    Выполняет SQL-запрос для получения DRCT_DRCT_ID по указанному NAME_CSV.
-    """
+    logging.info(f"Получение DRCT_DRCT_ID для NAME_CSV: {name_csv}")
     connection, cursor = None, None
     result = []
 
@@ -230,9 +225,7 @@ def get_drct_id(name_csv):
     return result
 
 def get_all_msisdn():
-    """
-    Получает все строки из таблицы TEASR_PREFIX_MSISDN.
-    """
+    logging.info("Получение всех строк из таблицы TEASR_PREFIX_MSISDN")
     connection, cursor = None, None
     result = []
 
@@ -252,12 +245,8 @@ def get_all_msisdn():
 
     return result
 
-
 def execute_max_pset_id_query():
-    """
-    Выполняет запрос для получения максимального PSET_ID из двух таблиц и
-    обновляет переменную c, если необходимо.
-    """
+    logging.info("Получение максимального PSET_ID из двух таблиц")
     connection, cursor = None, None
     try:
         connection, cursor = connect_db()
@@ -287,11 +276,16 @@ def execute_max_pset_id_query():
     finally:
         close_db(connection, cursor)
 
+def is_prefix_exists(cursor, prefix):
+    logging.info(f"Проверка существования PREFIX: {prefix}")
+    query = "SELECT 1 FROM \"BIS\".\"TEASR_PREFIX_SETS_EXP_CSV\" WHERE \"PREFIX\" = :prefix"
+    cursor.execute(query, [prefix])
+    exists = cursor.fetchone() is not None
+    logging.info(f"PREFIX {'существует' if exists else 'не существует'}")
+    return exists
 
 def insert_csv_updated_data(file_path):
-    """
-    Загружает данные из CSV файла в таблицу TEASR_DEF.
-    """
+    logging.info(f"Загрузка данных из CSV файла: {file_path}")
     if not os.path.isfile(file_path):
         logging.error(f"Файл {file_path} не существует.")
         print(f"Файл {file_path} не существует.")
@@ -324,6 +318,9 @@ def insert_csv_updated_data(file_path):
             for line in csv_reader:
                 if len(line) == 17:  # Проверка на количество элементов в строке
                     pset_id, number_history, oper_oper_id, prefix, start_date, end_date, navi_user, navi_date, drct_drct_id, cit_cit_id, cou_cou_id, pset_comment, odrc_odrc_id, zone_zone_id, aob_aob_id, rtcm_rtcm_id, action = line
+                    if is_prefix_exists(cursor, prefix):
+                        logging.warning(f"Значение PREFIX '{prefix}' уже существует в таблице. Строка пропущена.")
+                        continue
                     try:
                         start_date = datetime.strptime(start_date, '%d-%m-%Y')
                         end_date = datetime.strptime(end_date, '%d-%m-%Y')

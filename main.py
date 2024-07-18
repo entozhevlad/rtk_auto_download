@@ -6,6 +6,7 @@ from decouple import config
 import db
 import git_upload
 from handlers import handle_data
+
 def setup_logging(log_folder):
     """
     Настройка логгера для записи в файл 'prfDDMMYYYY.log' в указанной папке.
@@ -113,6 +114,7 @@ def main():
     try:
         file_url = config("FILE_URL")
         log_folder = config("LOG_FOLDER")
+        local_file_path = config("LOCAL_FILE_PATH", default=None)
     except KeyError as e:
         logging.error(f"Ошибка конфигурации: отсутствует параметр {e}")
         print(f"Ошибка конфигурации: отсутствует параметр {e}")
@@ -122,6 +124,18 @@ def main():
     setup_logging(log_folder)
     configure_proxy()
     file_name = download_file(file_url)
+
+    if not file_name and local_file_path:
+        user_input = input("Не удалось скачать файл. Хотите использовать локальный файл? (y/n): ").strip().lower()
+        if user_input in ('y', 'yes'):
+            if os.path.exists(local_file_path):
+                file_name = local_file_path
+                logging.info(f"Используется локальный файл: {file_name}")
+                print(f"Используется локальный файл: {file_name}")
+            else:
+                logging.error(f"Ошибка: Локальный файл не найден: {local_file_path}")
+                print(f"Ошибка: Локальный файл не найден: {local_file_path}")
+                return
 
     if file_name:
         if db.is_safe_csv_file(file_name):
@@ -137,7 +151,7 @@ def main():
             print("CSV файл не прошел проверку на безопасность.")
 
     user_input = input("Вы хотите запушить файл в Git? (y/n): ").strip().lower()
-    if user_input in ('y', 'Y'):
+    if user_input in ('y', 'yes'):
         try:
             git_upload.upload_to_git()
         except Exception as e:
