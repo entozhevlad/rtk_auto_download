@@ -185,7 +185,7 @@ def handle_data():
 
     file_path = 'DEF-9xx.csv'
     df = pd.read_csv(file_path, delimiter=';', dtype={'От': str, 'До': str})
-    phone_numbers = get_all_msisdn()  # [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
+    phone_numbers = [('9498506111',), ('9499044522',) ] #  # Вызов номеров в формате  [('9505998693',), ('9505971675',), ('9000000000',), ('9999999999',)]
     arr = set()
     if phone_numbers:
         nuser = input('Введите имя пользователя для NAVI_USER: ')
